@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [newDirection, setNewDirection] = useState('Long');
   const [newEntryPrice, setNewEntryPrice] = useState('');
   const [loading, setLoading] = useState(true);
+  const [dailyPL, setDailyPL] = useState<Record<number, number>>({});
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -59,6 +60,15 @@ export default function Dashboard() {
 
         if (tradesData) {
           setTrades(tradesData);
+          
+          // Calculate daily P&L for heatmap
+          const daily: Record<number, number> = {};
+          tradesData.forEach((trade: Trade) => {
+            const tradeDate = new Date(trade.opened_at);
+            const day = tradeDate.getDate();
+            daily[day] = (daily[day] || 0) + (trade.profit_loss || 0);
+          });
+          setDailyPL(daily);
           
           // Calculate stats
           const wins = tradesData.filter((t: Trade) => t.profit_loss && t.profit_loss > 0).length;
@@ -845,19 +855,36 @@ export default function Dashboard() {
             ))}
             {Array.from({ length: 35 }).map((_, i) => {
               const date = i + 1;
-              const randomProfit = Math.random() > 0.5 ? Math.random() * 500 : -Math.random() * 300;
+              const today = new Date();
+              const currentDay = today.getDate();
+              const isFutureDate = date > currentDay;
+              const dayPL = dailyPL[date];
+              const hasTradeOnDay = dayPL !== undefined;
+              
+              // Determine colors based on daily P&L
               let bgColor = 'rgba(255, 255, 255, 0.08)';
               let borderColor = 'rgba(77, 182, 172, 0.2)';
-              let textColor = 'rgba(255, 255, 255, 0.5)';
+              let textColor = '#FFFFFF';
+              let glowColor = 'rgba(77, 182, 172, 0.2)';
               
-              if (randomProfit > 50) {
-                bgColor = 'rgba(129, 199, 132, 0.3)';
-                borderColor = '#81C784';
-                textColor = '#81C784';
-              } else if (randomProfit < -50) {
-                bgColor = 'rgba(229, 115, 115, 0.3)';
-                borderColor = '#E57373';
-                textColor = '#E57373';
+              // Only apply colors to past dates with trades
+              if (!isFutureDate && hasTradeOnDay) {
+                if (dayPL > 0) {
+                  bgColor = 'rgba(129, 199, 132, 0.2)';
+                  borderColor = '#81C784';
+                  textColor = '#81C784';
+                  glowColor = '#81C78480';
+                } else if (dayPL < 0) {
+                  bgColor = 'rgba(229, 115, 115, 0.2)';
+                  borderColor = '#E57373';
+                  textColor = '#E57373';
+                  glowColor = '#E5737380';
+                } else {
+                  bgColor = 'rgba(255, 255, 255, 0.08)';
+                  borderColor = 'rgba(77, 182, 172, 0.2)';
+                  textColor = '#FFFFFF';
+                  glowColor = 'rgba(77, 182, 172, 0.2)';
+                }
               }
 
               return (
@@ -867,6 +894,7 @@ export default function Dashboard() {
                     aspectRatio: '1',
                     borderRadius: '8px',
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: '11px',
@@ -876,18 +904,28 @@ export default function Dashboard() {
                     background: bgColor,
                     color: textColor,
                     border: `1px solid ${borderColor}`,
-                    boxShadow: `0 0 10px ${borderColor}80`,
+                    boxShadow: `0 0 10px ${glowColor}`,
+                    padding: '4px',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'scale(1.15)';
-                    e.currentTarget.style.boxShadow = `0 0 20px ${borderColor}`;
+                    e.currentTarget.style.boxShadow = `0 0 20px ${glowColor}`;
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = `0 0 10px ${borderColor}80`;
+                    e.currentTarget.style.boxShadow = `0 0 10px ${glowColor}`;
                   }}
                 >
-                  {date <= 28 ? date : ''}
+                  {date <= 28 && (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: '12px' }}>{date}</div>
+                      {hasTradeOnDay && !isFutureDate && (
+                        <div style={{ fontSize: '9px', marginTop: '2px', opacity: 0.9 }}>
+                          ${dayPL >= 0 ? '+' : ''}{dayPL.toFixed(0)}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               );
             })}
