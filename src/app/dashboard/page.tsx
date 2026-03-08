@@ -106,7 +106,6 @@ export default function Dashboard() {
 
       const { data, error } = (await supabase
         .from('trades')
-        // @ts-expect-error - Supabase type inference issue with dynamic Insert
         .insert([
           {
             user_id: user.id,
