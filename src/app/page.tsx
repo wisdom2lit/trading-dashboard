@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 
 export default function Home() {
@@ -30,109 +29,147 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-dark-gradient overflow-hidden">
-      {/* Navigation */}
-      <nav className="glass-card sticky top-0 z-50 m-4 mb-0 rounded-b-none">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-3xl font-bold text-gradient"
-          >
-            Trading Dashboard
-          </motion.div>
-          <div className="flex gap-4">
-            <Link href="/auth/login" className="btn-secondary px-6 py-2">
-              Sign In
-            </Link>
-            <Link href="/auth/signup" className="btn-primary px-6 py-2">
-              Get Started
-            </Link>
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
-        className="max-w-6xl mx-auto px-4 py-20 text-center"
-      >
-        <h1 className="text-6xl font-bold text-gradient mb-6">
-          Professional Trading Dashboard
+    <div style={{
+      background: 'linear-gradient(135deg, #0F172E 0%, #1a1f3a 25%, #2d1b4e 50%, #1a1f3a 75%, #0F172E 100%)',
+      backgroundAttachment: 'fixed',
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#FFFFFF',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      padding: '20px',
+    }}>
+      <div style={{ textAlign: 'center', maxWidth: '600px' }}>
+        {/* Logo/Title */}
+        <h1 style={{
+          fontSize: '56px',
+          fontWeight: 700,
+          marginBottom: '16px',
+          background: 'linear-gradient(135deg, #4DB6AC, #FFAB91)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+        }}>
+          📊 Trading Dashboard
         </h1>
-        <p className="text-xl text-gray-400 mb-8 max-w-3xl mx-auto">
-          Manage your trading portfolio with advanced analytics, risk management tools,
-          and real-time trade tracking. Built for serious traders.
+
+        {/* Subtitle */}
+        <p style={{
+          fontSize: '18px',
+          color: 'rgba(255, 255, 255, 0.7)',
+          marginBottom: '48px',
+          lineHeight: '1.6',
+        }}>
+          Professional trading portfolio management & risk analytics
         </p>
 
-        <div className="flex gap-4 justify-center mb-20 flex-wrap">
-          <Link href="/auth/signup" className="btn-primary px-8 py-4 text-lg">
-            Start Trading Now
+        {/* CTA Buttons */}
+        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Link 
+            href="/auth/signup"
+            style={{
+              background: 'linear-gradient(135deg, #4DB6AC, #FFAB91)',
+              color: 'white',
+              padding: '14px 32px',
+              borderRadius: '10px',
+              textDecoration: 'none',
+              fontWeight: 600,
+              fontSize: '16px',
+              transition: 'all 0.3s ease',
+              display: 'inline-block',
+              boxShadow: '0 0 20px rgba(77, 182, 172, 0.4)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 0 30px rgba(77, 182, 172, 0.6)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.4)';
+            }}
+          >
+            Get Started
           </Link>
-          <Link href="/auth/login" className="btn-secondary px-8 py-4 text-lg">
+          <Link 
+            href="/auth/login"
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              color: '#FFFFFF',
+              padding: '14px 32px',
+              borderRadius: '10px',
+              textDecoration: 'none',
+              fontWeight: 600,
+              fontSize: '16px',
+              transition: 'all 0.3s ease',
+              display: 'inline-block',
+              border: '2px solid rgba(77, 182, 172, 0.3)',
+              boxShadow: '0 0 15px rgba(77, 182, 172, 0.2)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
+              e.currentTarget.style.borderColor = '#4DB6AC';
+              e.currentTarget.style.boxShadow = '0 0 25px rgba(77, 182, 172, 0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+              e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.3)';
+              e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.2)';
+            }}
+          >
             Sign In
           </Link>
         </div>
 
-        {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20">
-          {[
-            {
-              title: 'Advanced Analytics',
-              description: 'Real-time charts, win/loss ratios, and performance metrics',
-              icon: '📊',
-            },
-            {
-              title: 'Risk Management',
-              description: 'Daily/weekly loss limits, stop loss, and take profit tracking',
-              icon: '🛡️',
-            },
-            {
-              title: 'Trade Journal',
-              description: 'Comprehensive trade logging and analysis for improvement',
-              icon: '📝',
-            },
-            {
-              title: 'Smart Checklist',
-              description: 'Weighted trading checklist with confidence scoring',
-              icon: '✅',
-            },
-            {
-              title: 'Cloud Synchronized',
-              description: 'Access your data from any device, anytime, anywhere',
-              icon: '☁️',
-            },
-            {
-              title: 'Professional Grade',
-              description: 'Built for traders by traders with enterprise security',
-              icon: '🔐',
-            },
-          ].map((feature, index) => (
-            <motion.div
-              key={feature.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1, duration: 0.5 }}
-              className="glass-card p-8 hover:border-green-400/50 transition-all"
-            >
-              <div className="text-5xl mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
-              <p className="text-gray-400">{feature.description}</p>
-            </motion.div>
-          ))}
+        {/* Minimal Features */}
+        <div style={{
+          marginTop: '80px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '24px',
+        }}>
+          <div style={{
+            background: 'rgba(40,40,55,0.5)',
+            border: '1px solid rgba(77, 182, 172, 0.2)',
+            borderRadius: '12px',
+            padding: '20px',
+            backdropFilter: 'blur(10px)',
+          }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📊</div>
+            <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.8)', fontWeight: 500 }}>Advanced Analytics</p>
+          </div>
+          <div style={{
+            background: 'rgba(40,40,55,0.5)',
+            border: '1px solid rgba(77, 182, 172, 0.2)',
+            borderRadius: '12px',
+            padding: '20px',
+            backdropFilter: 'blur(10px)',
+          }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>🛡️</div>
+            <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.8)', fontWeight: 500 }}>Risk Management</p>
+          </div>
+          <div style={{
+            background: 'rgba(40,40,55,0.5)',
+            border: '1px solid rgba(77, 182, 172, 0.2)',
+            borderRadius: '12px',
+            padding: '20px',
+            backdropFilter: 'blur(10px)',
+          }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📝</div>
+            <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.8)', fontWeight: 500 }}>Trade Journal</p>
+          </div>
+          <div style={{
+            background: 'rgba(40,40,55,0.5)',
+            border: '1px solid rgba(77, 182, 172, 0.2)',
+            borderRadius: '12px',
+            padding: '20px',
+            backdropFilter: 'blur(10px)',
+          }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>☁️</div>
+            <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.8)', fontWeight: 500 }}>Cloud Synced</p>
+          </div>
         </div>
-      </motion.div>
-
-      {/* Footer */}
-      <div className="max-w-6xl mx-auto px-4 py-12 text-center text-gray-400 border-t border-white/10 mt-20">
-        <p>&copy; 2026 Trading Dashboard. All rights reserved.</p>
       </div>
-
-      {/* Decorative background elements */}
-      <div className="absolute top-0 left-0 w-96 h-96 bg-green-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 -z-10 animate-pulse" />
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 -z-10 animate-pulse" />
     </div>
   );
 }

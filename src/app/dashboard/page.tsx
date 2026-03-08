@@ -761,6 +761,158 @@ export default function Dashboard() {
             </table>
           </div>
         </div>
+
+        {/* Heatmap Calendar */}
+        <div style={{
+          background: 'rgba(40,40,55,0.7)',
+          borderRadius: '20px',
+          padding: '24px',
+          marginTop: '20px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(77, 182, 172, 0.2)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#FFFFFF' }}>📅 Trade Performance Heatmap</h3>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(77, 182, 172, 0.3)',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                transition: 'all 0.3s ease',
+                color: '#FFFFFF',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.2)';
+                e.currentTarget.style.borderColor = '#4DB6AC';
+                e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.3)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}>
+                ← Prev
+              </button>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', minWidth: '120px', textAlign: 'center' }}>
+                {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+              </span>
+              <button style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(77, 182, 172, 0.3)',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                transition: 'all 0.3s ease',
+                color: '#FFFFFF',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.2)';
+                e.currentTarget.style.borderColor = '#4DB6AC';
+                e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.3)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}>
+                Next →
+              </button>
+            </div>
+          </div>
+
+          {/* Calendar Grid */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(7, 1fr)', 
+            gap: '6px', 
+            marginBottom: '16px' 
+          }}>
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+              <div key={day} style={{
+                textAlign: 'center',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'rgba(255, 255, 255, 0.6)',
+                padding: '8px',
+              }}>
+                {day}
+              </div>
+            ))}
+            {Array.from({ length: 35 }).map((_, i) => {
+              const date = i + 1;
+              const randomProfit = Math.random() > 0.5 ? Math.random() * 500 : -Math.random() * 300;
+              let bgColor = 'rgba(255, 255, 255, 0.08)';
+              let borderColor = 'rgba(77, 182, 172, 0.2)';
+              let textColor = 'rgba(255, 255, 255, 0.5)';
+              
+              if (randomProfit > 50) {
+                bgColor = 'rgba(129, 199, 132, 0.3)';
+                borderColor = '#81C784';
+                textColor = '#81C784';
+              } else if (randomProfit < -50) {
+                bgColor = 'rgba(229, 115, 115, 0.3)';
+                borderColor = '#E57373';
+                textColor = '#E57373';
+              }
+
+              return (
+                <div
+                  key={i}
+                  style={{
+                    aspectRatio: '1',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    background: bgColor,
+                    color: textColor,
+                    border: `1px solid ${borderColor}`,
+                    boxShadow: `0 0 10px ${borderColor}80`,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.15)';
+                    e.currentTarget.style.boxShadow = `0 0 20px ${borderColor}`;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = `0 0 10px ${borderColor}80`;
+                  }}
+                >
+                  {date <= 28 ? date : ''}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: '#81C784' }} />
+              <span>Win</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: '#E57373' }} />
+              <span>Loss</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: 'rgba(255, 255, 255, 0.3)' }} />
+              <span>Break Even</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(77, 182, 172, 0.2)' }} />
+              <span>No Trade</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <style jsx>{`
