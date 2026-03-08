@@ -2,978 +2,526 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import toast from 'react-hot-toast';
 
 type Trade = {
   id: string;
   symbol: string;
   direction: 'Long' | 'Short';
-  entry_price: number;
-  profit_loss: number;
-  status: string;
-  opened_at: string;
+  date: string;
+  profit?: number;
+  notes?: string;
 };
 
-export default function Dashboard() {
+export default function DashboardPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [accountBalance, setAccountBalance] = useState(5000);
-  const [monthlyProfit, setMonthlyProfit] = useState(0);
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [stats, setStats] = useState({ wins: 0, losses: 0, winRate: 0, totalProfit: 0 });
-  const [newSymbol, setNewSymbol] = useState('');
-  const [newDirection, setNewDirection] = useState('Long');
-  const [newEntryPrice, setNewEntryPrice] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [dailyPL, setDailyPL] = useState<Record<number, number>>({});
+  const [totalProfit, setTotalProfit] = useState(0);
+  const [winRate, setWinRate] = useState(0);
+  const [profitFactor, setProfitFactor] = useState(0);
+  const [stats, setStats] = useState({
+    winTrades: 0,
+    lossTrades: 0,
+    largestWin: 0,
+    largestLoss: 0,
+    bestStreak: 0,
+  });
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const fetchUserData = async () => {
+    const journal = localStorage.getItem('juneJournal');
+    if (journal) {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (!user || !user.email) {
-          router.push('/auth/login');
-          return;
-        }
-
-        setEmail(user.email);
-
-        // Fetch trading accounts
-        const { data: accounts } = await supabase
-          .from('trading_accounts')
-          .select('*');
-
-        if (accounts && accounts.length > 0) {
-          setAccountBalance(accounts[0].account_balance);
-        }
-
-        // Fetch trades
-        const { data: tradesData } = await supabase
-          .from('trades')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('opened_at', { ascending: false });
-
-        if (tradesData) {
-          setTrades(tradesData);
-          
-          // Calculate daily P&L for heatmap
-          const daily: Record<number, number> = {};
-          tradesData.forEach((trade: Trade) => {
-            const tradeDate = new Date(trade.opened_at);
-            const day = tradeDate.getDate();
-            daily[day] = (daily[day] || 0) + (trade.profit_loss || 0);
-          });
-          setDailyPL(daily);
-          
-          // Calculate stats
-          const wins = tradesData.filter((t: Trade) => t.profit_loss && t.profit_loss > 0).length;
-          const losses = tradesData.filter((t: Trade) => t.profit_loss && t.profit_loss < 0).length;
-          const totalProfit = tradesData.reduce((sum: number, t: Trade) => sum + (t.profit_loss || 0), 0);
-          
-          setStats({
-            wins,
-            losses,
-            winRate: tradesData.length > 0 ? (wins / tradesData.length) * 100 : 0,
-            totalProfit,
-          });
-          setMonthlyProfit(totalProfit);
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        toast.error('Failed to load dashboard');
-      } finally {
-        setLoading(false);
+        const parsed = JSON.parse(journal) || [];
+        setTrades(parsed);
+        calculateStats(parsed);
+      } catch (e) {
+        console.error('Failed to load trades');
       }
-    };
+    }
+  }, []);
 
-    fetchUserData();
-  }, [router]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    toast.success('Logged out successfully');
-    router.push('/');
-  };
-
-  const handleAddTrade = async () => {
-    if (!newSymbol || !newEntryPrice) {
-      toast.error('Please fill in all fields');
+  const calculateStats = (tradesList: Trade[]) => {
+    if (tradesList.length === 0) {
+      setTotalProfit(0);
+      setWinRate(0);
+      setProfitFactor(0);
+      setStats({
+        winTrades: 0,
+        lossTrades: 0,
+        largestWin: 0,
+        largestLoss: 0,
+        bestStreak: 0,
+      });
       return;
     }
 
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('trades')
-        .insert([
-          {
-            user_id: user.id,
-            symbol: newSymbol,
-            direction: newDirection,
-            entry_price: parseFloat(newEntryPrice),
-            stop_loss: 0,
-            take_profit: 0,
-            quantity: 1,
-            status: 'open',
-          },
-        ])
-        .select();
-
-      if (error) throw error;
-      
-      if (data && data[0]) {
-        setTrades([data[0], ...trades]);
-      }
-      setNewSymbol('');
-      setNewEntryPrice('');
-      toast.success('Trade added successfully');
-    } catch (err) {
-      console.error('Failed to add trade:', err);
-      toast.error('Failed to add trade');
-    }
-  };
-
-  const handleDeleteTrade = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('trades')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      
-      setTrades(trades.filter((t) => t.id !== id));
-      toast.success('Trade deleted');
-    } catch (err) {
-      console.error('Failed to delete trade:', err);
-      toast.error('Failed to delete trade');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0F172E 0%, #1a1f3a 25%, #2d1b4e 50%, #1a1f3a 75%, #0F172E 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#FFFFFF',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      }}>
-        <div style={{ fontSize: '20px', fontWeight: 600 }}>Loading Dashboard...</div>
-      </div>
+    const tradesWithProfit = tradesList.filter((t) => t.profit !== undefined);
+    const totalProf = tradesWithProfit.reduce((sum, t) => sum + (t.profit || 0), 0);
+    const winTr = tradesWithProfit.filter((t) => t.profit && t.profit > 0).length;
+    const lossTr = tradesWithProfit.filter((t) => t.profit && t.profit < 0).length;
+    const totalWins = tradesWithProfit
+      .filter((t) => t.profit && t.profit > 0)
+      .reduce((sum, t) => sum + (t.profit || 0), 0);
+    const totalLosses = Math.abs(
+      tradesWithProfit
+        .filter((t) => t.profit && t.profit < 0)
+        .reduce((sum, t) => sum + (t.profit || 0), 0)
     );
-  }
 
-  return (
-    <div style={{
-      background: 'linear-gradient(135deg, #0F172E 0%, #1a1f3a 25%, #2d1b4e 50%, #1a1f3a 75%, #0F172E 100%)',
-      backgroundAttachment: 'fixed',
-      padding: '20px',
-      minHeight: '100vh',
-      color: '#FFFFFF',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    }}>
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{
-          background: 'rgba(40,40,55,0.7)',
-          borderRadius: '20px',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(77, 182, 172, 0.2)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px' }}>
-            <div>
-              <h1 style={{ fontSize: '28px', marginBottom: '8px', fontWeight: 600, color: '#FFFFFF' }}>📊 Prop Trading Dashboard</h1>
-              <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '14px' }}>Real-time account monitoring & risk management</p>
+    setTotalProfit(totalProf);
+    setWinRate(tradesWithProfit.length > 0 ? (winTr / tradesWithProfit.length) * 100 : 0);
+    setProfitFactor(totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0);
+
+    // Best streak
+    let bestStreak = 0;
+    let currentStreak = 0;
+    tradesWithProfit.forEach((t) => {
+      if (t.profit && t.profit > 0) {
+        currentStreak++;
+        bestStreak = Math.max(bestStreak, currentStreak);
+      } else {
+        currentStreak = 0;
+      }
+    });
+
+    setStats({
+      winTrades: winTr,
+      lossTrades: lossTr,
+      largestWin: tradesWithProfit.length > 0
+        ? Math.max(...tradesWithProfit.filter((t) => t.profit && t.profit > 0).map((t) => t.profit || 0), 0)
+        : 0,
+      largestLoss: tradesWithProfit.length > 0
+        ? Math.min(...tradesWithProfit.filter((t) => t.profit && t.profit < 0).map((t) => t.profit || 0), 0)
+        : 0,
+      bestStreak,
+    });
+  };
+
+  const getDayColor = (day: number): { bg: string; borderColor: string } => {
+    const dayTrades = trades.filter((t) => {
+      const tDate = new Date(t.date);
+      return (
+        tDate.getMonth() === currentMonth.getMonth() &&
+        tDate.getFullYear() === currentMonth.getFullYear() &&
+        tDate.getDate() === day
+      );
+    });
+
+    if (dayTrades.length === 0) {
+      return { bg: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.03)' };
+    }
+
+    const dayProfit = dayTrades.reduce((sum, t) => sum + (t.profit || 0), 0);
+    if (dayProfit > 0) {
+      return { bg: 'rgba(0,255,0,0.10)', borderColor: '#16a34a' };
+    } else if (dayProfit < 0) {
+      return { bg: 'rgba(255,0,128,0.10)', borderColor: '#ef4444' };
+    }
+    return { bg: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)' };
+  };
+
+  const renderCalendar = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date();
+
+    const days = [];
+    for (let i = 0; i < firstDay; i++) {
+      days.push(null);
+    }
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i);
+    }
+
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '12px', gap: '12px' }}>
+          <button
+            onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#16a34a',
+              fontSize: '20px',
+              cursor: 'pointer',
+              padding: '5px',
+            }}
+          >
+            &lt;
+          </button>
+          <div style={{ fontWeight: '900', color: '#16a34a', letterSpacing: '0.2px', minWidth: '150px', textAlign: 'center' }}>
+            {currentMonth.toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}
+          </div>
+          <button
+            onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#16a34a',
+              fontSize: '20px',
+              cursor: 'pointer',
+              padding: '5px',
+            }}
+          >
+            &gt;
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', marginTop: '8px' }}>
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+            <div key={day} style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(230,238,248,0.6)', padding: '8px' }}>
+              {day}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '14px' }}>👤 {email || 'User'}</span>
-              <button
-                onClick={handleLogout}
+          ))}
+
+          {days.map((day, idx) => {
+            const colors = day ? getDayColor(day) : { bg: 'transparent', borderColor: 'transparent' };
+            return (
+              <div
+                key={idx}
                 style={{
-                  background: '#E57373',
-                  color: 'white',
-                  border: 'none',
-                  padding: '10px 20px',
-                  borderRadius: '10px',
+                  aspectRatio: '1',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '12px',
+                  fontWeight: '900',
+                  color: day ? 'rgba(230,238,248,0.85)' : 'transparent',
+                  background: colors.bg,
+                  border: `1px solid ${colors.borderColor}`,
                   cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: '14px',
-                  transition: 'all 0.3s ease',
-                  boxShadow: '0 0 15px rgba(229, 115, 115, 0.3)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#FFAB91';
-                  e.currentTarget.style.color = '#1C1C1C';
-                  e.currentTarget.style.transform = 'scale(1.05)';
-                  e.currentTarget.style.boxShadow = '0 0 25px rgba(255, 171, 145, 0.5)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#E57373';
-                  e.currentTarget.style.color = 'white';
-                  e.currentTarget.style.transform = 'scale(1)';
-                  e.currentTarget.style.boxShadow = '0 0 15px rgba(229, 115, 115, 0.3)';
                 }}
               >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Grid - 2 Columns */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-          {/* LEFT COLUMN - Account Overview Card */}
-          <div style={{
-            background: 'rgba(40,40,55,0.7)',
-            borderRadius: '20px',
-            padding: '24px',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(77, 182, 172, 0.2)',
-          }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '16px', fontWeight: 600, color: '#FFFFFF' }}>Account Overview</h2>
-            
-            {/* Risk Alert */}
-            <div style={{
-              padding: '16px',
-              borderRadius: '12px',
-              marginBottom: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              fontWeight: 600,
-              border: '2px solid',
-              background: 'rgba(255, 255, 255, 0.05)',
-              backdropFilter: 'blur(10px)',
-              borderColor: monthlyProfit >= 0 ? '#81C784' : '#E57373',
-              color: monthlyProfit >= 0 ? '#81C784' : '#FFAB91',
-              boxShadow: monthlyProfit >= 0 
-                ? '0 0 20px rgba(129, 199, 132, 0.3)'
-                : '0 0 20px rgba(229, 115, 115, 0.3)',
-              animation: 'pulse 2s infinite',
-            }}>
-              <div style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                background: monthlyProfit >= 0 ? '#81C784' : '#E57373',
-                animation: 'pulse-dot 2s infinite',
-              }} />
-              <span>{monthlyProfit >= 0 ? '✓ All Clear - Trading Safe' : '⚠ Risk Alert - Drawdown'}</span>
-            </div>
-
-            {/* Account Items - 2x2 Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '12px',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                border: '1px solid rgba(77, 182, 172, 0.2)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.5)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.2)';
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}>
-                <label style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>Account Balance</label>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: '#FFFFFF' }}>${accountBalance.toFixed(2)}</div>
-              </div>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '12px',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                border: '1px solid rgba(77, 182, 172, 0.2)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.5)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.2)';
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}>
-                <label style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>Win Rate</label>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: '#FFFFFF' }}>{stats.winRate.toFixed(1)}%</div>
-              </div>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '12px',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                border: '1px solid rgba(77, 182, 172, 0.2)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.5)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.2)';
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}>
-                <label style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>Total Trades</label>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: '#FFFFFF' }}>{trades.length}</div>
-              </div>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '12px',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                border: '1px solid rgba(77, 182, 172, 0.2)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.5)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.2)';
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}>
-                <label style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>Monthly P&L</label>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: monthlyProfit >= 0 ? '#81C784' : '#E57373' }}>${monthlyProfit.toFixed(2)}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN - Monthly Summary */}
-          <div style={{
-            background: 'rgba(40,40,55,0.7)',
-            borderRadius: '20px',
-            padding: '24px',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(77, 182, 172, 0.2)',
-          }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '16px', fontWeight: 600, color: '#FFFFFF' }}>Monthly Summary</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '16px',
-                borderRadius: '12px',
-                textAlign: 'center',
-                border: '1px solid rgba(77, 182, 172, 0.2)',
-                transition: 'all 0.3s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}>
-                <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '8px', fontWeight: 500 }}>Total Profit</label>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: monthlyProfit >= 0 ? '#81C784' : '#E57373' }}>${monthlyProfit.toFixed(2)}</div>
-              </div>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '16px',
-                borderRadius: '12px',
-                textAlign: 'center',
-                border: '1px solid rgba(77, 182, 172, 0.2)',
-                transition: 'all 0.3s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}>
-                <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '8px', fontWeight: 500 }}>Win Trades</label>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: '#81C784' }}>{stats.wins}</div>
-              </div>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '16px',
-                borderRadius: '12px',
-                textAlign: 'center',
-                border: '1px solid rgba(77, 182, 172, 0.2)',
-                transition: 'all 0.3s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}>
-                <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '8px', fontWeight: 500 }}>Loss Trades</label>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: '#E57373' }}>{stats.losses}</div>
-              </div>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '16px',
-                borderRadius: '12px',
-                textAlign: 'center',
-                border: '1px solid rgba(77, 182, 172, 0.2)',
-                transition: 'all 0.3s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}>
-                <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '8px', fontWeight: 500 }}>Total Trades</label>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: '#FFFFFF' }}>{trades.length}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Risk Calculator */}
-        <div style={{
-          background: 'rgba(40,40,55,0.7)',
-          borderRadius: '20px',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(77, 182, 172, 0.2)',
-        }}>
-          <h2 style={{ fontSize: '18px', marginBottom: '16px', fontWeight: 600, color: '#FFFFFF' }}>💰 Risk Calculator</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>Account Size</label>
-              <input
-                type="number"
-                value={accountBalance}
-                disabled
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '2px solid rgba(77, 182, 172, 0.3)',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  color: '#FFFFFF',
-                  opacity: '0.6',
-                  fontWeight: 600,
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>Risk Per Trade</label>
-              <input
-                type="number"
-                placeholder="500"
-                defaultValue="500"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '2px solid rgba(77, 182, 172, 0.3)',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  color: '#FFFFFF',
-                  fontWeight: 600,
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>Reward Multiple</label>
-              <input
-                type="number"
-                placeholder="2"
-                defaultValue="2"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '2px solid rgba(77, 182, 172, 0.3)',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  color: '#FFFFFF',
-                  fontWeight: 600,
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Add Trade Form */}
-        <div style={{
-          background: 'rgba(40,40,55,0.7)',
-          borderRadius: '20px',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(77, 182, 172, 0.2)',
-        }}>
-          <h2 style={{ fontSize: '18px', marginBottom: '16px', fontWeight: 600, color: '#FFFFFF' }}>📝 Add New Trade</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
-            <input
-              type="text"
-              placeholder="Symbol"
-              value={newSymbol}
-              onChange={(e) => setNewSymbol(e.target.value)}
-              style={{
-                padding: '10px',
-                border: '2px solid rgba(77, 182, 172, 0.3)',
-                borderRadius: '8px',
-                fontSize: '14px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                color: '#FFFFFF',
-                fontWeight: 600,
-                transition: 'all 0.3s ease',
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = '#4DB6AC';
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.4)';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
-            <select
-              value={newDirection}
-              onChange={(e) => setNewDirection(e.target.value)}
-              style={{
-                padding: '10px',
-                border: '2px solid rgba(77, 182, 172, 0.3)',
-                borderRadius: '8px',
-                fontSize: '14px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                color: '#FFFFFF',
-                fontWeight: 600,
-                transition: 'all 0.3s ease',
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = '#4DB6AC';
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.4)';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              <option>Long</option>
-              <option>Short</option>
-            </select>
-            <input
-              type="number"
-              placeholder="Entry Price"
-              value={newEntryPrice}
-              onChange={(e) => setNewEntryPrice(e.target.value)}
-              step="0.01"
-              style={{
-                padding: '10px',
-                border: '2px solid rgba(77, 182, 172, 0.3)',
-                borderRadius: '8px',
-                fontSize: '14px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                color: '#FFFFFF',
-                fontWeight: 600,
-                transition: 'all 0.3s ease',
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = '#4DB6AC';
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.15)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.4)';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
-            <button
-              onClick={handleAddTrade}
-              style={{
-                background: 'linear-gradient(135deg, #4DB6AC, #FFAB91)',
-                color: 'white',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '14px',
-                transition: 'all 0.3s ease',
-                boxShadow: '0 0 20px rgba(77, 182, 172, 0.4)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 0 30px rgba(77, 182, 172, 0.6)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(77, 182, 172, 0.4)';
-              }}
-            >
-              ➕ Add Trade
-            </button>
-          </div>
-        </div>
-
-        {/* Trade Log Table */}
-        <div style={{
-          background: 'rgba(40,40,55,0.7)',
-          borderRadius: '20px',
-          padding: '24px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(77, 182, 172, 0.2)',
-        }}>
-          <h2 style={{ fontSize: '18px', marginBottom: '16px', fontWeight: 600, color: '#FFFFFF' }}>📈 Trade Log ({trades.length})</h2>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-              <thead style={{ background: 'rgba(255, 255, 255, 0.02)' }}>
-                <tr>
-                  <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', borderBottom: '2px solid rgba(77, 182, 172, 0.2)', background: 'rgba(255, 255, 255, 0.02)' }}>Symbol</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', borderBottom: '2px solid rgba(77, 182, 172, 0.2)', background: 'rgba(255, 255, 255, 0.02)' }}>Direction</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', borderBottom: '2px solid rgba(77, 182, 172, 0.2)', background: 'rgba(255, 255, 255, 0.02)' }}>Entry Price</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', borderBottom: '2px solid rgba(77, 182, 172, 0.2)', background: 'rgba(255, 255, 255, 0.02)' }}>P&L</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', borderBottom: '2px solid rgba(77, 182, 172, 0.2)', background: 'rgba(255, 255, 255, 0.02)' }}>Status</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', borderBottom: '2px solid rgba(77, 182, 172, 0.2)', background: 'rgba(255, 255, 255, 0.02)' }}>Date</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', borderBottom: '2px solid rgba(77, 182, 172, 0.2)', background: 'rgba(255, 255, 255, 0.02)' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trades.length > 0 ? (
-                  trades.map((trade) => (
-                    <tr
-                      key={trade.id}
-                      style={{
-                        transition: 'background 0.3s ease',
-                        borderLeft: trade.profit_loss > 0 ? '4px solid #81C784' : trade.profit_loss < 0 ? '4px solid #E57373' : '4px solid rgba(255, 255, 255, 0.4)',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(77, 182, 172, 0.1)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent';
-                      }}
-                    >
-                      <td style={{ padding: '12px', borderBottom: '1px solid rgba(77, 182, 172, 0.1)', color: 'rgba(255, 255, 255, 0.9)', fontWeight: 600 }}>{trade.symbol}</td>
-                      <td style={{ padding: '12px', borderBottom: '1px solid rgba(77, 182, 172, 0.1)', color: 'rgba(255, 255, 255, 0.9)' }}>
-                        <span style={{
-                          background: trade.direction === 'Long' ? 'rgba(33, 150, 243, 0.2)' : 'rgba(229, 115, 115, 0.2)',
-                          color: trade.direction === 'Long' ? '#64B5F6' : '#EF9A9A',
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                        }}>
-                          {trade.direction}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px', borderBottom: '1px solid rgba(77, 182, 172, 0.1)', color: 'rgba(255, 255, 255, 0.9)' }}>${trade.entry_price.toFixed(2)}</td>
-                      <td style={{ padding: '12px', borderBottom: '1px solid rgba(77, 182, 172, 0.1)', fontWeight: 'bold', color: trade.profit_loss > 0 ? '#81C784' : trade.profit_loss < 0 ? '#E57373' : 'rgba(255, 255, 255, 0.9)' }}>
-                        ${trade.profit_loss?.toFixed(2) || '0.00'}
-                      </td>
-                      <td style={{ padding: '12px', borderBottom: '1px solid rgba(77, 182, 172, 0.1)', color: 'rgba(255, 255, 255, 0.9)' }}>
-                        <span style={{
-                          background: trade.status === 'open' ? 'rgba(33, 150, 243, 0.2)' : 'rgba(128, 128, 128, 0.2)',
-                          color: trade.status === 'open' ? '#64B5F6' : '#999999',
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                        }}>
-                          {trade.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px', borderBottom: '1px solid rgba(77, 182, 172, 0.1)', color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px' }}>
-                        {new Date(trade.opened_at).toLocaleDateString()}
-                      </td>
-                      <td style={{ padding: '12px', borderBottom: '1px solid rgba(77, 182, 172, 0.1)' }}>
-                        <button
-                          onClick={() => handleDeleteTrade(trade.id)}
-                          style={{
-                            background: '#E57373',
-                            color: 'white',
-                            border: 'none',
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            transition: 'all 0.3s ease',
-                            boxShadow: '0 0 15px rgba(229, 115, 115, 0.3)',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#FFAB91';
-                            e.currentTarget.style.color = '#1C1C1C';
-                            e.currentTarget.style.transform = 'scale(1.05)';
-                            e.currentTarget.style.boxShadow = '0 0 25px rgba(255, 171, 145, 0.5)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#E57373';
-                            e.currentTarget.style.color = 'white';
-                            e.currentTarget.style.transform = 'scale(1)';
-                            e.currentTarget.style.boxShadow = '0 0 15px rgba(229, 115, 115, 0.3)';
-                          }}
-                        >
-                          🗑️ Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'rgba(255, 255, 255, 0.5)' }}>
-                      No trades yet. Add your first trade above!
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Heatmap Calendar */}
-        <div style={{
-          background: 'rgba(40,40,55,0.7)',
-          borderRadius: '20px',
-          padding: '24px',
-          marginTop: '20px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(77, 182, 172, 0.2)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#FFFFFF' }}>📅 Trade Performance Heatmap</h3>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <button style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(77, 182, 172, 0.3)',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: 500,
-                transition: 'all 0.3s ease',
-                color: '#FFFFFF',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.2)';
-                e.currentTarget.style.borderColor = '#4DB6AC';
-                e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}>
-                ← Prev
-              </button>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', minWidth: '120px', textAlign: 'center' }}>
-                {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
-              </span>
-              <button style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(77, 182, 172, 0.3)',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: 500,
-                transition: 'all 0.3s ease',
-                color: '#FFFFFF',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(77, 182, 172, 0.2)';
-                e.currentTarget.style.borderColor = '#4DB6AC';
-                e.currentTarget.style.boxShadow = '0 0 15px rgba(77, 182, 172, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(77, 182, 172, 0.3)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}>
-                Next →
-              </button>
-            </div>
-          </div>
-
-          {/* Calendar Grid */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(7, 1fr)', 
-            gap: '6px', 
-            marginBottom: '16px' 
-          }}>
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-              <div key={day} style={{
-                textAlign: 'center',
-                fontSize: '12px',
-                fontWeight: 600,
-                color: 'rgba(255, 255, 255, 0.6)',
-                padding: '8px',
-              }}>
                 {day}
               </div>
-            ))}
-            {Array.from({ length: 35 }).map((_, i) => {
-              const date = i + 1;
-              const today = new Date();
-              const currentDay = today.getDate();
-              const isFutureDate = date > currentDay;
-              const dayPL = dailyPL[date];
-              const hasTradeOnDay = dayPL !== undefined;
-              
-              // Determine colors based on daily P&L
-              let bgColor = 'rgba(255, 255, 255, 0.08)';
-              let borderColor = 'rgba(77, 182, 172, 0.2)';
-              let textColor = '#FFFFFF';
-              let glowColor = 'rgba(77, 182, 172, 0.2)';
-              
-              // Only apply colors to past dates with trades
-              if (!isFutureDate && hasTradeOnDay) {
-                if (dayPL > 0) {
-                  bgColor = 'rgba(129, 199, 132, 0.2)';
-                  borderColor = '#81C784';
-                  textColor = '#81C784';
-                  glowColor = '#81C78480';
-                } else if (dayPL < 0) {
-                  bgColor = 'rgba(229, 115, 115, 0.2)';
-                  borderColor = '#E57373';
-                  textColor = '#E57373';
-                  glowColor = '#E5737380';
-                } else {
-                  bgColor = 'rgba(255, 255, 255, 0.08)';
-                  borderColor = 'rgba(77, 182, 172, 0.2)';
-                  textColor = '#FFFFFF';
-                  glowColor = 'rgba(77, 182, 172, 0.2)';
-                }
-              }
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const groupTradesByWeek = () => {
+    const grouped: Record<string, Trade[]> = {};
+
+    trades
+      .filter((t) => {
+        const tDate = new Date(t.date);
+        return (
+          tDate.getMonth() === currentMonth.getMonth() &&
+          tDate.getFullYear() === currentMonth.getFullYear()
+        );
+      })
+      .forEach((trade) => {
+        const tDate = new Date(trade.date);
+        const weekStart = new Date(tDate);
+        const dow = (weekStart.getDay() + 6) % 7;
+        weekStart.setDate(weekStart.getDate() - dow);
+        const weekKey = weekStart.toISOString().slice(0, 10);
+
+        if (!grouped[weekKey]) grouped[weekKey] = [];
+        grouped[weekKey].push(trade);
+      });
+
+    return grouped;
+  };
+
+  const weeklySummaries = groupTradesByWeek();
+  const sortedWeeks = Object.keys(weeklySummaries).sort((a, b) => b.localeCompare(a));
+
+  return (
+    <div
+      style={{
+        background: 'linear-gradient(45deg, #0a0a0a, #1a1a1a)',
+        color: '#00ff88',
+        minHeight: '100vh',
+        padding: '104px 22px 22px',
+        fontFamily: 'Inter, system-ui, -apple-system, Roboto, Arial',
+      }}
+    >
+      {/* Navigation */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          background: 'transparent',
+          zIndex: 1000,
+          padding: '22px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '20px',
+          height: '50px',
+        }}
+      >
+        <div></div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#bbf7d0' }}>
+            {new Date().toLocaleDateString()}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <a
+            href="/checklist"
+            style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: 'transparent',
+              color: '#bbf7d0',
+              border: '1px solid rgba(187,247,208,0.3)',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '14px',
+              textDecoration: 'none',
+              display: 'inline-block',
+            }}
+          >
+            📋 Checklist
+          </a>
+          <a
+            href="/dashboard"
+            style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: 'linear-gradient(90deg, #16a34a, #06b6d4)',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '14px',
+              textDecoration: 'none',
+              display: 'inline-block',
+            }}
+          >
+            📊 Dashboard
+          </a>
+          <a
+            href="/trades"
+            style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: 'transparent',
+              color: '#bbf7d0',
+              border: '1px solid rgba(187,247,208,0.3)',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '14px',
+              textDecoration: 'none',
+              display: 'inline-block',
+            }}
+          >
+            📈 Trades
+          </a>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: '1060px', margin: '0 auto' }}>
+        <h1 style={{ color: '#16a34a', margin: '0 0 6px', letterSpacing: '0.2px', fontSize: '28px' }}>
+          Trading Dashboard
+        </h1>
+        <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)' }}>
+          At-a-glance performance from saved trades
+        </div>
+
+        {/* Net Profit Hero */}
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.02)',
+            padding: '16px',
+            borderRadius: '14px',
+            marginTop: '20px',
+            border: '1px solid rgba(255,255,255,0.04)',
+            boxShadow: '0 18px 50px rgba(0,0,0,0.55)',
+          }}
+        >
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '8px' }}>
+              Net Profit & Loss
+            </div>
+            <div
+              style={{
+                fontSize: '48px',
+                fontWeight: '950',
+                color: totalProfit >= 0 ? '#16a34a' : '#ef4444',
+                letterSpacing: '-0.8px',
+                textShadow:
+                  totalProfit >= 0
+                    ? '0 18px 54px rgba(0,255,0,0.238), 0 0 22px rgba(0,255,255,0.153)'
+                    : '0 18px 54px rgba(255,0,128,0.187), 0 0 22px rgba(255,0,128,0.119)',
+              }}
+            >
+              ${totalProfit.toFixed(2)}
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '12px', color: 'rgba(230,238,248,0.65)' }}>
+              {trades.filter((t) => t.profit !== undefined).length} trades completed
+            </div>
+          </div>
+
+          {/* Key Metrics */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '16px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '6px' }}>Win Rate</div>
+              <div style={{ fontSize: '20px', fontWeight: '850', letterSpacing: '0.2px' }}>
+                {winRate.toFixed(1)}%
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '6px' }}>Profit Factor</div>
+              <div style={{ fontSize: '20px', fontWeight: '850', letterSpacing: '0.2px' }}>
+                {isFinite(profitFactor) ? profitFactor.toFixed(2) : '—'}
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '6px' }}>Avg Confluence</div>
+              <div style={{ fontSize: '20px', fontWeight: '850', letterSpacing: '0.2px' }}>0%</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Key Stats Section */}
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.02)',
+            padding: '16px',
+            borderRadius: '14px',
+            marginTop: '14px',
+            border: '1px solid rgba(255,255,255,0.04)',
+          }}
+        >
+          <h2 style={{ fontSize: '14px', color: '#16a34a', marginBottom: '12px', letterSpacing: '0.3px', margin: 0 }}>
+            Key Stats
+          </h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '6px' }}>Total Profit</div>
+              <div style={{ fontSize: '20px', fontWeight: '850' }}>
+                {trades
+                  .filter((t) => t.profit && t.profit > 0)
+                  .reduce((sum, t) => sum + (t.profit || 0), 0)
+                  .toFixed(2)}
+              </div>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginTop: '4px' }}>
+                {stats.winTrades} winning trades
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '6px' }}>Total Loss</div>
+              <div style={{ fontSize: '20px', fontWeight: '850' }}>
+                {Math.abs(
+                  trades
+                    .filter((t) => t.profit && t.profit < 0)
+                    .reduce((sum, t) => sum + (t.profit || 0), 0)
+                ).toFixed(2)}
+              </div>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginTop: '4px' }}>
+                {stats.lossTrades} losing trades
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '6px' }}>Largest Win</div>
+              <div style={{ fontSize: '20px', fontWeight: '850' }}>${stats.largestWin.toFixed(2)}</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '6px' }}>Largest Loss</div>
+              <div style={{ fontSize: '20px', fontWeight: '850' }}>${Math.abs(stats.largestLoss).toFixed(2)}</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)', marginBottom: '6px' }}>Best Win Streak</div>
+              <div style={{ fontSize: '20px', fontWeight: '850' }}>{stats.bestStreak}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Calendar Section */}
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.02)',
+            padding: '16px',
+            borderRadius: '14px',
+            marginTop: '14px',
+            border: '1px solid rgba(255,255,255,0.04)',
+          }}
+        >
+          <h2 style={{ fontSize: '14px', color: '#16a34a', marginBottom: '12px', letterSpacing: '0.3px', margin: 0 }}>
+            Calendar
+          </h2>
+          {renderCalendar()}
+        </div>
+
+        {/* Weekly Summaries */}
+        {sortedWeeks.length > 0 && (
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.02)',
+              padding: '16px',
+              borderRadius: '14px',
+              marginTop: '14px',
+              marginBottom: '28px',
+              border: '1px solid rgba(255,255,255,0.04)',
+            }}
+          >
+            <h2 style={{ fontSize: '14px', color: '#16a34a', marginBottom: '12px', letterSpacing: '0.3px', margin: 0 }}>
+              Weekly Summaries
+            </h2>
+
+            {sortedWeeks.map((weekKey) => {
+              const weekTrades = weeklySummaries[weekKey];
+              const profit = weekTrades.reduce((sum, t) => sum + (t.profit || 0), 0);
+              const wins = weekTrades.filter((t) => t.profit && t.profit > 0).length;
 
               return (
                 <div
-                  key={i}
+                  key={weekKey}
                   style={{
-                    aspectRatio: '1',
+                    display: 'grid',
+                    gridTemplateColumns: '1.4fr repeat(4, 1fr)',
+                    gap: '10px',
+                    marginBottom: '10px',
+                    padding: '12px',
+                    background: 'rgba(255,255,255,0.01)',
                     borderRadius: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    background: bgColor,
-                    color: textColor,
-                    border: `1px solid ${borderColor}`,
-                    boxShadow: `0 0 10px ${glowColor}`,
-                    padding: '4px',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'scale(1.15)';
-                    e.currentTarget.style.boxShadow = `0 0 20px ${glowColor}`;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = `0 0 10px ${glowColor}`;
                   }}
                 >
-                  {date <= 28 && (
-                    <>
-                      <div style={{ fontWeight: 700, fontSize: '12px' }}>{date}</div>
-                      {hasTradeOnDay && !isFutureDate && (
-                        <div style={{ fontSize: '9px', marginTop: '2px', opacity: 0.9 }}>
-                          ${dayPL >= 0 ? '+' : ''}{dayPL.toFixed(0)}
-                        </div>
-                      )}
-                    </>
-                  )}
+                  <div style={{ fontSize: '12px', color: 'rgba(230,238,248,0.65)' }}>
+                    Week of {new Date(weekKey).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px', textAlign: 'center', fontSize: '12px' }}>
+                    {weekTrades.length} trades
+                  </div>
+                  <div
+                    style={{
+                      background: 'rgba(255,255,255,0.02)',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      textAlign: 'center',
+                      fontSize: '12px',
+                      color: profit >= 0 ? '#16a34a' : '#ef4444',
+                    }}
+                  >
+                    ${profit.toFixed(2)}
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px', textAlign: 'center', fontSize: '12px' }}>
+                    {wins} wins
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px', textAlign: 'center', fontSize: '12px' }}>
+                    {((wins / weekTrades.length) * 100).toFixed(0)}%
+                  </div>
                 </div>
               );
             })}
           </div>
-
-          {/* Legend */}
-          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: '#81C784' }} />
-              <span>Win</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: '#E57373' }} />
-              <span>Loss</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: 'rgba(255, 255, 255, 0.3)' }} />
-              <span>Break Even</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(77, 182, 172, 0.2)' }} />
-              <span>No Trade</span>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
-
-      <style jsx>{`
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.7;
-          }
-        }
-        @keyframes pulse-dot {
-          0% {
-            box-shadow: 0 0 0 0 rgba(129, 199, 132, 0.7);
-          }
-          70% {
-            box-shadow: 0 0 0 10px rgba(129, 199, 132, 0);
-          }
-          100% {
-            box-shadow: 0 0 0 0 rgba(129, 199, 132, 0);
-          }
-        }
-      `}</style>
     </div>
   );
 }
