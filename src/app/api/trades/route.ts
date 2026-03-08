@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('trades')
+      // @ts-ignore - Supabase type inference issue with dynamic inserts
       .insert([
         {
           user_id: user.id,

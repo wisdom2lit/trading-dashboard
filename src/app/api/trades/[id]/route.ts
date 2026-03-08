@@ -50,7 +50,9 @@ export async function PATCH(
 
     const { data, error } = await supabase
       .from('trades')
+      // @ts-ignore - Supabase type inference issue with dynamic updates
       .update(body)
+      // @ts-ignore
       .eq('id', id)
       .eq('user_id', user.id)
       .select()

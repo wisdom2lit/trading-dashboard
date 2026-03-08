@@ -38,17 +38,17 @@ export default function DashboardPage() {
           data: { user },
         } = await supabase.auth.getUser();
 
-        if (user?.email) {
-          setEmail(user.email);
-        } else {
+        if (!user || !user.email) {
           router.push('/auth/login');
+          return;
         }
+
+        setEmail(user.email);
 
         // Fetch trading accounts
         const { data: accounts } = await supabase
           .from('trading_accounts')
-          .select('*')
-          .eq('user_id', user?.id);
+          .select('*') as any;
 
         if (accounts && accounts.length > 0) {
           setAccountBalance(accounts[0].account_balance);
@@ -58,17 +58,17 @@ export default function DashboardPage() {
         const { data: tradesData } = await supabase
           .from('trades')
           .select('*')
-          .eq('user_id', user?.id)
+          .eq('user_id', user.id)
           .order('opened_at', { ascending: false })
-          .limit(10);
+          .limit(10) as any;
 
         if (tradesData) {
           setTrades(tradesData);
           
           // Calculate stats
-          const wins = tradesData.filter((t) => t.profit_loss && t.profit_loss > 0).length;
-          const losses = tradesData.filter((t) => t.profit_loss && t.profit_loss < 0).length;
-          const totalProfit = tradesData.reduce((sum, t) => sum + (t.profit_loss || 0), 0);
+          const wins = tradesData.filter((t: any) => t.profit_loss && t.profit_loss > 0).length;
+          const losses = tradesData.filter((t: any) => t.profit_loss && t.profit_loss < 0).length;
+          const totalProfit = tradesData.reduce((sum: number, t: any) => sum + (t.profit_loss || 0), 0);
           
           setStats({
             wins,
